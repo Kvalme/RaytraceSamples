@@ -1,0 +1,3 @@
+[submodule "RadeonRays_SDK"]
+	path = RadeonRays_SDK
+	url = git@github.com:GPUOpen-LibrariesAndSDKs/RadeonRays_SDK.git
