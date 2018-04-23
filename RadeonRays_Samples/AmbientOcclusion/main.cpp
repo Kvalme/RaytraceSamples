@@ -7,10 +7,48 @@
 #include "utils.h"
 #include "tiny_obj_loader.h"
 #include "scene.h"
+#include "radeon_rays_cl.h"
+
+#include "CLWProgram.h"
+
+#include "OpenImageIO/imageio.h"
 
 using namespace RadeonRays;
 using namespace tinyobj;
 
+void GenCameraRays(CLWContext context, CLWProgram program, CLWBuffer<Params> camera_params_buffer, CLWBuffer<ray> rays_buffer,
+    int w, int h)
+{
+    //Generate camera rays
+    CLWKernel genkernel = program.GetKernel("GenerateCameraRays");
+    int argid = 0;
+    genkernel.SetArg(argid++, camera_params_buffer);
+    genkernel.SetArg(argid++, w);
+    genkernel.SetArg(argid++, h);
+    genkernel.SetArg(argid++, rays_buffer);
+
+    int globalsize = w * h;
+    context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, genkernel).Wait();
+}
+
+void SaveImage(const std::string &fname, float *data, int w, int h)
+{
+    OIIO_NAMESPACE_USING;
+
+    std::unique_ptr<ImageOutput> out{ ImageOutput::create(fname) };
+
+    if (!out)
+    {
+        throw std::runtime_error("Can't create image file on disk");
+    }
+
+    auto fmt = TypeDesc::FLOAT;
+    ImageSpec spec(w, h, 4, fmt);
+
+    out->open(fname, spec);
+    out->write_image(fmt, data);
+    out->close();
+}
 
 int main(int argc, char* argv[])
 {
@@ -20,12 +58,18 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    IntersectionApi* intersection_api = InitIntersectorApi();
+    CLWContext context = InitCLW(0, 0);
+    IntersectionApi* intersection_api = InitIntersectorApi(context);
 
     Scene scene;
-    scene.loadFile("../../Resources/Sponza/sponza.obj");
+    //scene.loadFile("../../Resources/Sponza/sponza.obj");
+    scene.loadFile("../../Resources/orig.obj");
 
     UploadSceneToIntersector(scene, intersection_api);
+    CLWBuffer<::Shape> shapes_buffer;
+    CLWBuffer<Vertex> vertex_buffer;
+    CLWBuffer<uint32_t> index_buffer;
+    BuildSceneBuffers(context, scene, shapes_buffer, vertex_buffer, index_buffer);
 
     intersection_api->Commit();
 
@@ -35,13 +79,74 @@ int main(int argc, char* argv[])
     int rays_per_frame = w * h * rays_per_frame_per_hit;
     int initial_rays_count = w * h; // 1 ray per pixel
 
+    std::cout << "Primary rays: " << initial_rays_count << std::endl;
     std::cout << "Indirect rays per frame: " << rays_per_frame << " (" << rays_per_frame_per_hit << " per hit)" << std::endl;
 
     std::vector<ray> initial_rays(initial_rays_count);
     std::vector<ray> indirect_rays(rays_per_frame);
 
-    Params camera_params =
+/*    Params camera_params =
         PrepareCameraParams(float4(-11.f, 111.f, -54.f), float4(-9.f, 111.f, -54.f), float4(0.f, 1.f, 0.f),
-            float4(0.1f, 10000.f, (float)w, (float)h));
+            float4(0.1f, 10000.f), float2((float)w, (float)h));*/
+    Params camera_params =
+        PrepareCameraParams(float4(0.f, 0.f, 0.f), float4(1.f, 0.f, 0.f), float4(0.f, 1.f, 0.f),
+            float4(0.1f, 10000.f), float2((float)w, (float)h));
 
+
+    std::string options("-cl-mad-enable -cl-fast-relaxed-math -cl-std=CL1.2 -I .");
+    CLWProgram program = CLWProgram::CreateFromFile("ambient_occlusion.cl", options.c_str(), context);
+
+    CLWBuffer<ray> primary_rays_buffer = context.CreateBuffer<ray>(initial_rays_count, CL_MEM_READ_WRITE);
+    CLWBuffer<Intersection> primary_intersection_buffer = context.CreateBuffer<Intersection>(initial_rays_count, CL_MEM_READ_WRITE);
+    CLWBuffer<ray> indirect_rays_buffer = context.CreateBuffer<ray>(rays_per_frame, CL_MEM_READ_WRITE);
+    CLWBuffer<Intersection> indirect_intersection_buffer = context.CreateBuffer<Intersection>(rays_per_frame, CL_MEM_READ_WRITE);
+
+    CLWBuffer<float4> output_buffer = context.CreateBuffer<float4>(w*h, CL_MEM_READ_WRITE);
+    
+    CLWBuffer<Params> camera_params_buffer = context.CreateBuffer<Params>(1, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, &camera_params);
+
+    // 10 passes
+    for (int a = 0; a < 1; ++a)
+    {
+        //Gen camera rays
+        GenCameraRays(context, program, camera_params_buffer, primary_rays_buffer, w, h);
+        
+        //Run intersector
+        Buffer *ray_buffer = CreateFromOpenClBuffer(intersection_api, primary_rays_buffer);
+        Buffer *isect_buffer = CreateFromOpenClBuffer(intersection_api, primary_intersection_buffer);
+        intersection_api->QueryIntersection(ray_buffer, initial_rays_count, isect_buffer, nullptr, nullptr);
+
+        Intersection *is;
+
+        context.MapBuffer(0, primary_intersection_buffer, CL_MAP_READ, &is).Wait();
+
+
+        context.UnmapBuffer(0, primary_intersection_buffer, is);
+
+        {
+            //Shade and generate new rays
+            CLWKernel kernel = program.GetKernel("ShadePrimaryRays");
+            int argid = 0;
+            kernel.SetArg(argid++, shapes_buffer);
+            kernel.SetArg(argid++, vertex_buffer);
+            kernel.SetArg(argid++, index_buffer);
+            kernel.SetArg(argid++, indirect_intersection_buffer);
+            kernel.SetArg(argid++, primary_rays_buffer);
+            kernel.SetArg(argid++, primary_intersection_buffer);
+            kernel.SetArg(argid++, (cl_int)primary_intersection_buffer.GetElementCount());
+            kernel.SetArg(argid++, output_buffer);
+
+            int globalsize = primary_rays_buffer.GetElementCount();
+            context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
+        }
+    }
+
+    // dump image
+    std::unique_ptr<float[]> image_data(new float[output_buffer.GetElementCount() * 4]);
+    float4 *image;
+    context.MapBuffer(0, output_buffer, CL_MAP_READ, &image).Wait();
+    memcpy(image_data.get(), image, sizeof(float4) * output_buffer.GetElementCount());
+    context.UnmapBuffer(0, output_buffer, image);
+
+    SaveImage("ambient_occlusion.png", image_data.get(), w, h);
 }
