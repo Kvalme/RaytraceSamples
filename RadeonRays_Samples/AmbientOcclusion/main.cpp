@@ -28,7 +28,7 @@ void GenCameraRays(CLWContext context, CLWProgram program, CLWBuffer<Params> cam
     genkernel.SetArg(argid++, rays_buffer);
 
     int globalsize = w * h;
-    context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, genkernel).Wait();
+    context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, genkernel);
 }
 
 void SaveImage(const std::string &fname, float *data, int w, int h)
@@ -73,17 +73,14 @@ int main(int argc, char* argv[])
 
     intersection_api->Commit();
 
-    int rays_per_frame_per_hit = atoi(argv[1]);
+    int ao_rays_per_frame_per_hit = atoi(argv[1]);
     int w = 1920;
     int h = 1080;
-    int rays_per_frame = w * h * rays_per_frame_per_hit;
+    int ao_rays_per_frame = w * h * ao_rays_per_frame_per_hit;
     int initial_rays_count = w * h; // 1 ray per pixel
 
     std::cout << "Primary rays: " << initial_rays_count << std::endl;
-    std::cout << "Indirect rays per frame: " << rays_per_frame << " (" << rays_per_frame_per_hit << " per hit)" << std::endl;
-
-    std::vector<ray> initial_rays(initial_rays_count);
-    std::vector<ray> indirect_rays(rays_per_frame);
+    std::cout << "Max ao rays per frame: " << ao_rays_per_frame << " (" << ao_rays_per_frame_per_hit << " per hit)" << std::endl;
 
     Params camera_params =
         PrepareCameraParams(float4(-11.f, 111.f, -54.f), float4(-9.f, 111.f, -54.f), float4(0.f, 1.f, 0.f),
@@ -98,26 +95,38 @@ int main(int argc, char* argv[])
 
     CLWBuffer<ray> primary_rays_buffer = context.CreateBuffer<ray>(initial_rays_count, CL_MEM_READ_WRITE);
     CLWBuffer<Intersection> primary_intersection_buffer = context.CreateBuffer<Intersection>(initial_rays_count, CL_MEM_READ_WRITE);
-    CLWBuffer<ray> indirect_rays_buffer = context.CreateBuffer<ray>(rays_per_frame, CL_MEM_READ_WRITE);
-    CLWBuffer<Intersection> indirect_intersection_buffer = context.CreateBuffer<Intersection>(rays_per_frame, CL_MEM_READ_WRITE);
+
+    CLWBuffer<ray> ao_rays_buffer = context.CreateBuffer<ray>(ao_rays_per_frame, CL_MEM_READ_WRITE);
+    CLWBuffer<Intersection> ao_intersection_buffer = context.CreateBuffer<Intersection>(ao_rays_per_frame, CL_MEM_READ_WRITE);
+    CLWBuffer<uint32_t> max_ao_rays = context.CreateBuffer<uint32_t>(1, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, &ao_rays_per_frame);
+    CLWBuffer<uint32_t> ao_rays_counter = context.CreateBuffer<uint32_t>(1, CL_MEM_READ_WRITE);
 
     CLWBuffer<float4> output_buffer = context.CreateBuffer<float4>(w*h, CL_MEM_READ_WRITE);
     
     CLWBuffer<Params> camera_params_buffer = context.CreateBuffer<Params>(1, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, &camera_params);
 
+    CLWBuffer<float4> color_buffer = context.CreateBuffer<float4>(w*h, CL_MEM_READ_WRITE);
+
+    //Clear output buffer
+    context.FillBuffer<float4>(0, output_buffer, float4(), output_buffer.GetElementCount());
+
+
+    Buffer *ray_buffer = CreateFromOpenClBuffer(intersection_api, primary_rays_buffer);
+    Buffer *isect_buffer = CreateFromOpenClBuffer(intersection_api, primary_intersection_buffer);
+    Buffer *ao_ray_buffer = CreateFromOpenClBuffer(intersection_api, ao_rays_buffer);
+    Buffer *ao_isect_buffer = CreateFromOpenClBuffer(intersection_api, ao_intersection_buffer);
+
     // 10 passes
-    for (int a = 0; a < 1; ++a)
+    for (int a = 0; a < 300; ++a)
     {
+        context.FillBuffer<uint32_t>(0, ao_rays_counter, 0, 1);
+
         //Gen camera rays
         GenCameraRays(context, program, camera_params_buffer, primary_rays_buffer, w, h);
         
         //Run intersector
-        Buffer *ray_buffer = CreateFromOpenClBuffer(intersection_api, primary_rays_buffer);
-        Buffer *isect_buffer = CreateFromOpenClBuffer(intersection_api, primary_intersection_buffer);
         intersection_api->QueryIntersection(ray_buffer, initial_rays_count, isect_buffer, nullptr, nullptr);
 
-        Intersection *is;
-        
         {
             //Shade and generate new rays
             CLWKernel kernel = program.GetKernel("ShadePrimaryRays");
@@ -125,15 +134,48 @@ int main(int argc, char* argv[])
             kernel.SetArg(argid++, shapes_buffer);
             kernel.SetArg(argid++, vertex_buffer);
             kernel.SetArg(argid++, index_buffer);
-            kernel.SetArg(argid++, indirect_intersection_buffer);
+            kernel.SetArg(argid++, ao_rays_buffer);
             kernel.SetArg(argid++, primary_rays_buffer);
             kernel.SetArg(argid++, primary_intersection_buffer);
             kernel.SetArg(argid++, (cl_int)primary_intersection_buffer.GetElementCount());
             kernel.SetArg(argid++, output_buffer);
+            kernel.SetArg(argid++, color_buffer);
+            kernel.SetArg(argid++, ao_rays_counter);
+            kernel.SetArg(argid++, max_ao_rays);
+            kernel.SetArg(argid++, ao_rays_per_frame_per_hit);
+            kernel.SetArg(argid++, a);
 
             int globalsize = primary_rays_buffer.GetElementCount();
             context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
         }
+
+        //Trace AO rays
+        uint32_t ao_rays_count;
+        context.ReadBuffer<uint32_t>(0, ao_rays_counter, &ao_rays_count, 1).Wait();
+        intersection_api->QueryIntersection(ao_ray_buffer, ao_rays_count, ao_isect_buffer, nullptr, nullptr);
+        //Process AO
+        {
+            CLWKernel kernel = program.GetKernel("ProcessAO");
+            int argid = 0;
+            kernel.SetArg(argid++, ao_rays_buffer);
+            kernel.SetArg(argid++, ao_intersection_buffer);
+            kernel.SetArg(argid++, ao_rays_count);
+            kernel.SetArg(argid++, color_buffer);
+            kernel.SetArg(argid++, output_buffer);
+
+            int globalsize = ao_rays_count;
+            context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
+        }
+    }
+
+    //Resolve image
+    {
+        CLWKernel kernel = program.GetKernel("Resolve");
+        int argid = 0;
+        kernel.SetArg(argid++, output_buffer);
+
+        int globalsize = w * h;
+        context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
     }
 
     // dump image
@@ -143,5 +185,5 @@ int main(int argc, char* argv[])
     memcpy(image_data.get(), image, sizeof(float4) * output_buffer.GetElementCount());
     context.UnmapBuffer(0, output_buffer, image);
 
-    SaveImage("ambient_occlusion.png", image_data.get(), w, h);
+    SaveImage("ambient_occlusion.jpg", image_data.get(), w, h);
 }
