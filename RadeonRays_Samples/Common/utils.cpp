@@ -74,7 +74,7 @@ void UploadSceneToIntersector(const Scene& scene, IntersectionApi* api)
         int nvert = (int)(mesh.vertices_.size() / (mesh.vertex_stride_/sizeof(float)));
         int* indices = reinterpret_cast<int*>(mesh.indices_.data());
         int nfaces = (int)(mesh.indices_.size() / 3);
-        RadeonRays::Shape* shape = api->CreateMesh(vertdata, nvert, mesh.vertex_stride_, indices, mesh.index_stride_, nullptr, nfaces);
+        RadeonRays::Shape* shape = api->CreateMesh(vertdata, nvert, mesh.vertex_stride_, indices, 0, nullptr, nfaces);
         shape->SetId(id++);
 
         assert(shape != nullptr);
@@ -92,7 +92,7 @@ void BuildSceneBuffers(CLWContext context, const Scene& scene, CLWBuffer<::Shape
     for (auto mesh : scene.meshes_)
     {
         ::Shape shape;
-        shape.base_vertex = (uint32_t)(vertices_array.size() / (sizeof(Vertex) / sizeof(float)));
+        shape.base_vertex = (uint32_t)(vertices_array.size());
         shape.first_index = (uint32_t)(indices_array.size());
         shape.light_id = -1;
         shape.index_count = (uint32_t)mesh.indices_.size();

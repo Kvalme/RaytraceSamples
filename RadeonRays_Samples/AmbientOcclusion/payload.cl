@@ -6,7 +6,7 @@ typedef struct
     float4 o;
     float4 d;
     int2 extra;
-    float2 padding;
+    int2 padding;
 } Ray;
 
 typedef struct

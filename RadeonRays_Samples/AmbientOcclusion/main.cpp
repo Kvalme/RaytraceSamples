@@ -62,8 +62,8 @@ int main(int argc, char* argv[])
     IntersectionApi* intersection_api = InitIntersectorApi(context);
 
     Scene scene;
-    //scene.loadFile("../../Resources/Sponza/sponza.obj");
-    scene.loadFile("../../Resources/orig.obj");
+    scene.loadFile("../../Resources/Sponza/sponza.obj");
+    //scene.loadFile("../../Resources/orig.obj");
 
     UploadSceneToIntersector(scene, intersection_api);
     CLWBuffer<::Shape> shapes_buffer;
@@ -85,12 +85,12 @@ int main(int argc, char* argv[])
     std::vector<ray> initial_rays(initial_rays_count);
     std::vector<ray> indirect_rays(rays_per_frame);
 
-/*    Params camera_params =
-        PrepareCameraParams(float4(-11.f, 111.f, -54.f), float4(-9.f, 111.f, -54.f), float4(0.f, 1.f, 0.f),
-            float4(0.1f, 10000.f), float2((float)w, (float)h));*/
     Params camera_params =
-        PrepareCameraParams(float4(0.f, 0.f, 0.f), float4(1.f, 0.f, 0.f), float4(0.f, 1.f, 0.f),
+        PrepareCameraParams(float4(-11.f, 111.f, -54.f), float4(-9.f, 111.f, -54.f), float4(0.f, 1.f, 0.f),
             float4(0.1f, 10000.f), float2((float)w, (float)h));
+    /*Params camera_params =
+        PrepareCameraParams(float4(0.f, 1.f, 3.f), float4(0.f, 1.f, 2.f), float4(0.f, 1.f, 0.f),
+            float4(0.1f, 10000.f), float2((float)w, (float)h));*/
 
 
     std::string options("-cl-mad-enable -cl-fast-relaxed-math -cl-std=CL1.2 -I .");
@@ -117,12 +117,7 @@ int main(int argc, char* argv[])
         intersection_api->QueryIntersection(ray_buffer, initial_rays_count, isect_buffer, nullptr, nullptr);
 
         Intersection *is;
-
-        context.MapBuffer(0, primary_intersection_buffer, CL_MAP_READ, &is).Wait();
-
-
-        context.UnmapBuffer(0, primary_intersection_buffer, is);
-
+        
         {
             //Shade and generate new rays
             CLWKernel kernel = program.GetKernel("ShadePrimaryRays");
