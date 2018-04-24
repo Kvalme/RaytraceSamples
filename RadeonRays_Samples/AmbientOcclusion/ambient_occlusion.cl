@@ -102,7 +102,7 @@ void ShadePrimaryRays(
         float3 normal = (1.0f - hit.uvwt.x - hit.uvwt.y) * v0.normal + hit.uvwt.x * v1.normal + hit.uvwt.y * v2.normal;
 
         // Write color to output buffer
-        color_buffer[pixel_id] = (float4)(color, 1.0f);
+        color_buffer[pixel_id] = (float4)(4.0f * color, 1.0f);
 
         Sampler sampler;
         Sampler_Init(&sampler, gid + frame_no);
@@ -117,7 +117,7 @@ void ShadePrimaryRays(
                 float3 dir = Sample_MapToHemisphere(sample, normal, 0.f);
 
                 Ray ray;
-                ray.o = (float4)(pos + normal * 0.001, 100000.f);
+                ray.o = (float4)(pos + normal * 0.001f, 100000.f);
                 ray.d = (float4)(dir, 0.f);
                 ray.extra.x = 0xffffffff;
                 ray.extra.y = 0xffffffff;
@@ -150,17 +150,23 @@ void ProcessAO(
             output[pixel_id] += color_buffer[pixel_id];
             return;
         }
+        else
+        {
+            output[pixel_id] += (float4)(0.0f, 0.0f, 0.0f, 1.0f);
+            return;
+        }
     }
 }
 
 KERNEL
 void Resolve(
-    GLOBAL float4* restrict output
+    GLOBAL float4* restrict output,
+    int frame_count
 )
 {
     // Get hold of the pixel
     const int gid = get_global_id(0);
-    output[gid] /= output[gid].w > 0.9f ? output[gid].w : 1.0f;
+    output[gid] /=  output[gid].w > 0.9f ? output[gid].w : 1.0f;
 }
 
 

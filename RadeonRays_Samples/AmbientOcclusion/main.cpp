@@ -116,8 +116,8 @@ int main(int argc, char* argv[])
     Buffer *ao_ray_buffer = CreateFromOpenClBuffer(intersection_api, ao_rays_buffer);
     Buffer *ao_isect_buffer = CreateFromOpenClBuffer(intersection_api, ao_intersection_buffer);
 
-    // 10 passes
-    for (int a = 0; a < 300; ++a)
+    int frame_count = 300;
+    for (int a = 0; a < frame_count; ++a)
     {
         context.FillBuffer<uint32_t>(0, ao_rays_counter, 0, 1);
 
@@ -173,6 +173,7 @@ int main(int argc, char* argv[])
         CLWKernel kernel = program.GetKernel("Resolve");
         int argid = 0;
         kernel.SetArg(argid++, output_buffer);
+        kernel.SetArg(argid++, frame_count);
 
         int globalsize = w * h;
         context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
