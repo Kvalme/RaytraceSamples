@@ -1,2 +1,3 @@
 add_subdirectory(AmbientOcclusion)
 add_subdirectory(ShadowsPointLight)
+add_subdirectory(ShadowsAreaLight)
