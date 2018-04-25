@@ -234,5 +234,4 @@ void add_float4(__global float4* ptr, float4 value)
     *ptr += value;
 }
 
-
 #endif // UTILS_CL

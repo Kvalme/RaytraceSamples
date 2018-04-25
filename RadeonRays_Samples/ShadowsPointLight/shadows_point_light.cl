@@ -36,7 +36,7 @@ void GenerateCameraRays(
 {
     // Get hold of the pixel
     const int gid = get_global_id(0);
-    
+
     float2 pixelPos = (float2)(gid % output_width, gid / output_width);
 
     // Convert to world space position
@@ -44,9 +44,9 @@ void GenerateCameraRays(
 
     float4 homogeneous = matrix_mul_vector4(camera_params->view_proj_inv, (float4)(ndc * (float2)(1.0f, -1.0f), 0.0f, 1.0f));
     homogeneous.xyz /= homogeneous.w; // projection divide
-    
 
-    // Create the camera ray
+
+                                      // Create the camera ray
     Ray ray;
 
     ray.d = (float4)(normalize(homogeneous.xyz - camera_params->eye.xyz), 0.0f);
@@ -60,7 +60,6 @@ void GenerateCameraRays(
     rays[gid] = ray;
 }
 
-
 KERNEL
 void ShadePrimaryRays(
     GLOBAL Shape const* restrict shapes,
@@ -72,9 +71,9 @@ void ShadePrimaryRays(
     int intersection_count,
     GLOBAL float4* restrict output,
     GLOBAL float4* restrict color_buffer,
-    volatile GLOBAL uint * restrict ao_rays_counter,
-    GLOBAL uint const* restrict max_output_rays,
-    int ao_rays_per_frame,
+    int light_count,
+    GLOBAL Light const* restrict lights,
+    volatile GLOBAL uint * restrict shadow_rays_counter,
     int frame_no
 )
 {
@@ -106,30 +105,34 @@ void ShadePrimaryRays(
 
         Sampler sampler;
         Sampler_Init(&sampler, gid + frame_no);
+        float2 sample = Sampler_Sample2D(&sampler);
+        int light_id = (int)(sample.x * light_count);
+        Light l = lights[light_id];
 
-        //Get location index
-        int ray_idx = atomic_add(ao_rays_counter, ao_rays_per_frame);
-        if (ray_idx + ao_rays_per_frame < *max_output_rays)
-        {
-            for (int a = 0; a < ao_rays_per_frame; ++a)
-            {
-                float2 sample = Sampler_Sample2D(&sampler);
-                float3 dir = Sample_MapToHemisphere(sample, normal, 0.f);
+        Ray shadow_ray;
+        shadow_ray.o = (float4)(pos + normal * 0.001f, 100000.f);
+        float3 ray_direction = l.position - shadow_ray.o.xyz;
+        shadow_ray.d = normalize((float4)(ray_direction, 0.f));
+        shadow_ray.extra.x = 0xffffffff;
+        shadow_ray.extra.y = 0xffffffff;
+        shadow_ray.padding.x = pixel_id;
 
-                Ray ray;
-                ray.o = (float4)(pos + normal * 0.001f, 100000.f);
-                ray.d = (float4)(dir, 0.f);
-                ray.extra.x = 0xffffffff;
-                ray.extra.y = 0xffffffff;
-                ray.padding.x = pixel_id;
-                output_rays[ray_idx + a] = ray;
-            }
-        }
+        int ray_idx = atomic_inc(shadow_rays_counter);
+        output_rays[ray_idx] = shadow_ray;
+
+        float3 v = -normalize(shadow_ray.d.xyz);
+
+        float ndotwo = fabs(dot(normal, normalize(shadow_ray.d.xyz)));
+        float dist = dot(ray_direction, ray_direction)/100;
+
+        float3 radiance = l.intencity * ndotwo * color / dist;
+     
+        color_buffer[pixel_id] = (float4)(radiance, 1.0f);
     }
 }
 
 KERNEL
-void ProcessAO(
+void ProcessShadowRays(
     GLOBAL Ray* restrict input_rays,
     GLOBAL Intersection const* restrict isects,
     int intersection_count,
