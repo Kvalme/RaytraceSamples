@@ -112,6 +112,7 @@ void ShadePrimaryRays(
         Ray shadow_ray;
         shadow_ray.o = (float4)(pos + normal * 0.001f, 100000.f);
         float3 ray_direction = l.position - shadow_ray.o.xyz;
+        shadow_ray.o.w = length(ray_direction);
         shadow_ray.d = normalize((float4)(ray_direction, 0.f));
         shadow_ray.extra.x = 0xffffffff;
         shadow_ray.extra.y = 0xffffffff;
