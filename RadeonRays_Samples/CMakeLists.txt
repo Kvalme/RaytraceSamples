@@ -1,3 +1,5 @@
 add_subdirectory(AmbientOcclusion)
 add_subdirectory(ShadowsPointLight)
 add_subdirectory(ShadowsAreaLight)
+add_subdirectory(GlossyReflection)
+add_subdirectory(IdealReflection)
