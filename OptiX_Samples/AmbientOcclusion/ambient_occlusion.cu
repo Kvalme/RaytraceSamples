@@ -1,68 +1,78 @@
+/**********************************************************************
+Copyright (c) 2016 Advanced Micro Devices, Inc. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+********************************************************************/
+
 #include <optix.h>
 #include <optixu/optixu_math_namespace.h>
-#include <scene.h>
+#include <utils.h>
 
 using namespace optix;
 
-rtDeclareVariable(uint2, launch_index, rtLaunchIndex, );
+rtDeclareVariable(unsigned int, launch_index, rtLaunchIndex, );
 
 rtDeclareVariable(optix::Ray, ray, rtCurrentRay, );
+rtDeclareVariable(unsigned int, primary_ray_type, , );
+rtDeclareVariable(unsigned int, shadow_ray_type, , );
+rtDeclareVariable(rtObject, top_object, , );
 
-rtDeclareVariable(float4, camera_eye, , );
-rtDeclareVariable(float4, camera_near_far, , );
-rtDeclareVariable(float4, camera_screen_dims, , );
-rtDeclareVariable(float4, eye, , );
+rtDeclareVariable(CameraParams, camera_params, , );
 
-optix::Matrix4x4 view_proj_inv;
-
+rtDeclareVariable(PerRayData_radiance, prd_radiance, rtPayload, );
 
 rtBuffer<float4, 2>   output_buffer;
-
-rtDeclareVariable(CameraParams, )
-
-/*
-
-
-rtDeclareVariable(float3,                draw_color, , );
-
-RT_PROGRAM void draw_solid_color()
-{
-  output_buffer[launch_index] = make_float4(draw_color, 0.f);
-}
-*/
-
-rtDeclareVariable()
 
 RT_PROGRAM void GenerateCameraRays()
 {
     // Get hold of the pixel
-    const int gid = get_global_id(0);
+    const unsigned int gid = launch_index;
 
-    float2 pixelPos = (float2)(gid % output_width, gid / output_width);
+    float2 pixelPos = make_float2(gid % (int)camera_params.screen_dims.x, gid / (int)camera_params.screen_dims.x);
 
     // Convert to world space position
-    float2 ndc = 2.0f * (pixelPos + 0.5f) * camera_params->screen_dims.zw - 1.0f;
+    float2 ndc = 2.0f * (pixelPos + 0.5f) * camera_params.screen_dims.zw - 1.0f;
 
-    float4 homogeneous = matrix_mul_vector4(camera_params->view_proj_inv, (float4)(ndc * (float2)(1.0f, -1.0f), 0.0f, 1.0f));
+    float4 homogeneous = matrix_mul_vector4(camera_params.view_proj_inv, (float4)(ndc * (float2)(1.0f, -1.0f), 0.0f, 1.0f));
     homogeneous.xyz /= homogeneous.w; // projection divide
 
+    // Create the camera ray
+    optix::Ray ray(camera_params->eye, normalize(homogeneous.xyz - camera_params->eye.xyz), primary_ray_type, scene_epsilon);
 
-                                      // Create the camera ray
-    Ray ray;
+    PerRayData_radiance prd;
+    prd.importance = 1.f;
+    prd.depth = 0;
 
-    ray.d = (float4)(normalize(homogeneous.xyz - camera_params->eye.xyz), 0.0f);
-    ray.o = camera_params->eye;
-    ray.o.w = 100000.f;
-    ray.extra.x = 0xffffffff;
-    ray.extra.y = 0xffffffff;
-    ray.padding.x = gid;
+    rtTrace(top_object, ray, prd);
 
     // Write the ray out to memory
-    rays[gid] = ray;
+    output_buffer[launch_index] += prd.result;
 }
 
+RT_PROGRAM void MissHitPrimary()
+{
+    prd_radiance.result = (float3)(0.0f, 0.0f, 0.0f);
+}
 
-RT_PROGRAM void ShadePrimaryRays(
+RT_PROGRAM void ShadePrimaryRays()
+{}
+/*
     GLOBAL Shape const* restrict shapes,
     GLOBAL Vertex const* restrict vertices,
     GLOBAL uint const* restrict indices,
@@ -171,3 +181,4 @@ void Resolve(
 
 
 
+*/

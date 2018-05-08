@@ -67,6 +67,8 @@ int main(int argc, char* argv[])
     context->setRayTypeCount(2);
     context->setEntryPointCount(1);
     context->setStackSize(4640);
+    context["primary_ray_type"]->setUint(0);
+    context["shadow_ray_type"]->setUint(1);
     context["scene_epsilon"]->setFloat(1.e-4f);
 
     Buffer output_buffer = context->createBuffer(RT_BUFFER_OUTPUT);
@@ -98,7 +100,7 @@ int main(int argc, char* argv[])
     //Run
     context->validate();
     
-    context->launch(0, w, h);
+    context->launch(0, w * h);
 
 
     //Read and save output buffer

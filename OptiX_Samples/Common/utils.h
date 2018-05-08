@@ -2,10 +2,10 @@
 
 struct Shape
 {
-    uint32_t index_count;
-    uint32_t first_index;
-    uint32_t base_vertex;
-    int32_t light_id;
+    unsigned int index_count;
+    unsigned int first_index;
+    unsigned int base_vertex;
+    int light_id;
 };
 
 struct CameraParams
@@ -18,9 +18,16 @@ struct CameraParams
 
 struct Vertex
 {
-    float3 position;
-    float3 normal;
-    float3 color;
-    float2 tex_coords;
-    float2 padding;
+    optix::float3 position;
+    optix::float3 normal;
+    optix::float3 color;
+    optix::float2 tex_coords;
+    optix::float2 padding;
 };
+
+struct PerRayData_radiance
+{
+    optix::float3 result;
+    float importance;
+};
+
