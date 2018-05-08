@@ -1,5 +1,3 @@
-#include "radeon_rays.h"
-
 #include <iostream>
 
 #include "math/matrix.h"

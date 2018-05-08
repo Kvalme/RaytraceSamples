@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 
-project(Baikal CXX)
+project(Baikal CXX C)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -9,6 +9,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 find_package(Threads REQUIRED)
 find_package(OIIO REQUIRED)
+find_package(OptiX REQUIRED)
+find_package(CUDA 5.0 REQUIRED)
+set(CUDA_NVRTC_ENABLED ON)
 
 #Configure RadeonRays build
 set(RR_EMBED_KERNELS ON CACHE BOOL "Embed CL kernels into binary module")
@@ -27,3 +30,4 @@ add_subdirectory(Tools/externals/tinyobjloader-1.1.0)
 add_subdirectory(RadeonRays_SDK)
 
 add_subdirectory(RadeonRays_Samples)
+add_subdirectory(OptiX_Samples)
