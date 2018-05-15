@@ -114,7 +114,7 @@ int main(int argc, char* argv[])
     Buffer *ao_ray_buffer = CreateFromOpenClBuffer(intersection_api, ao_rays_buffer);
     Buffer *ao_isect_buffer = CreateFromOpenClBuffer(intersection_api, ao_intersection_buffer);
 
-    int frame_count = 300;
+    int frame_count = 1;
     for (int a = 0; a < frame_count; ++a)
     {
         context.FillBuffer<uint32_t>(0, ao_rays_counter, 0, 1);

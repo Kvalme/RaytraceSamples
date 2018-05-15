@@ -21,43 +21,70 @@ THE SOFTWARE.
 ********************************************************************/
 
 #include <optix.h>
-#include <optixu/optixu_math_namespace.h>
+#include <optixu/optixu_matrix.h>
 #include <utils.h>
 
 using namespace optix;
 
-rtDeclareVariable(unsigned int, launch_index, rtLaunchIndex, );
+rtDeclareVariable(uint2, launch_index, rtLaunchIndex, );
 
 rtDeclareVariable(optix::Ray, ray, rtCurrentRay, );
 rtDeclareVariable(unsigned int, primary_ray_type, , );
 rtDeclareVariable(unsigned int, shadow_ray_type, , );
 rtDeclareVariable(rtObject, top_object, , );
+rtDeclareVariable(float,        scene_epsilon, , );
 
 rtDeclareVariable(CameraParams, camera_params, , );
 
 rtDeclareVariable(PerRayData_radiance, prd_radiance, rtPayload, );
+
+rtDeclareVariable(float3, texcoord,         attribute texcoord, ); 
+rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, ); 
+rtDeclareVariable(float3, shading_normal,   attribute shading_normal, ); 
+rtDeclareVariable(float3, color, attribute color, );
+
+rtDeclareVariable(float3, back_hit_point,   attribute back_hit_point, ); 
+rtDeclareVariable(float3, front_hit_point,  attribute front_hit_point, ); 
+
 
 rtBuffer<float4, 2>   output_buffer;
 
 RT_PROGRAM void GenerateCameraRays()
 {
     // Get hold of the pixel
-    const unsigned int gid = launch_index;
-
-    float2 pixelPos = make_float2(gid % (int)camera_params.screen_dims.x, gid / (int)camera_params.screen_dims.x);
-
+    float2 pixelPos = make_float2(launch_index.x, launch_index.y);
     // Convert to world space position
-    float2 ndc = 2.0f * (pixelPos + 0.5f) * camera_params.screen_dims.zw - 1.0f;
+    float2 ndc = 2.0f * (pixelPos + 0.5f) * make_float2(camera_params.screen_dims.z, camera_params.screen_dims.w) - 1.0f;
 
-    float4 homogeneous = matrix_mul_vector4(camera_params.view_proj_inv, (float4)(ndc * (float2)(1.0f, -1.0f), 0.0f, 1.0f));
-    homogeneous.xyz /= homogeneous.w; // projection divide
+    float2 ndc2 = ndc * make_float2(1.0f, -1.0f);
+
+    float4 homogeneous = camera_params.view_proj_inv * make_float4(ndc2.x, ndc2.y, 0.0f, 1.0f);
+    homogeneous.x /= homogeneous.w; // projection divide
+    homogeneous.y /= homogeneous.w; // projection divide
+    homogeneous.z /= homogeneous.w; // projection divide
+    homogeneous.w /= homogeneous.w; // projection divide
+
+    float3 eye = make_float3(camera_params.eye.x, camera_params.eye.y, camera_params.eye.z);
 
     // Create the camera ray
-    optix::Ray ray(camera_params->eye, normalize(homogeneous.xyz - camera_params->eye.xyz), primary_ray_type, scene_epsilon);
+    optix::Ray ray(eye, normalize(make_float3(homogeneous.x, homogeneous.y, homogeneous.z) - eye), primary_ray_type, scene_epsilon);
 
     PerRayData_radiance prd;
     prd.importance = 1.f;
-    prd.depth = 0;
+  
+/*    printf("matrix: {%f\t%f\t%f\t%f}\n{%f\t%f\t%f\t%f}\n{%f\t%f\t%f\t%f}\n{%f\t%f\t%f\t%f}\n",
+        camera_params.view_proj_inv.getRow(0).x, camera_params.view_proj_inv.getRow(0).y, camera_params.view_proj_inv.getRow(0).z,
+        camera_params.view_proj_inv.getRow(0).w,
+        camera_params.view_proj_inv.getRow(1).x, camera_params.view_proj_inv.getRow(1).y, camera_params.view_proj_inv.getRow(1).z,
+        camera_params.view_proj_inv.getRow(1).w,
+        camera_params.view_proj_inv.getRow(2).x, camera_params.view_proj_inv.getRow(2).y, camera_params.view_proj_inv.getRow(2).z,
+        camera_params.view_proj_inv.getRow(2).w,
+        camera_params.view_proj_inv.getRow(3).x, camera_params.view_proj_inv.getRow(3).y, camera_params.view_proj_inv.getRow(3).z,
+        camera_params.view_proj_inv.getRow(3).w
+    );    */
+
+    //printf("o:%f:%f:%f\n", ray.direction.x, ray.direction.y, ray.direction.z);
+
 
     rtTrace(top_object, ray, prd);
 
@@ -67,11 +94,19 @@ RT_PROGRAM void GenerateCameraRays()
 
 RT_PROGRAM void MissHitPrimary()
 {
-    prd_radiance.result = (float3)(0.0f, 0.0f, 0.0f);
+    prd_radiance.result = make_float4(1.0f, 0.0f, 0.0f, 0.0f);
 }
 
 RT_PROGRAM void ShadePrimaryRays()
-{}
+{
+    prd_radiance.result = make_float4(color.x, color.y, color.z, 0.0f);
+}
+
+RT_PROGRAM void Exception()
+{
+  output_buffer[launch_index] = make_float4(1.0f, 0.0f, 1.0f, 0.0f);
+}
+
 /*
     GLOBAL Shape const* restrict shapes,
     GLOBAL Vertex const* restrict vertices,

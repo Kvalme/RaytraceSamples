@@ -27,7 +27,7 @@ struct Vertex
 
 struct PerRayData_radiance
 {
-    optix::float3 result;
+    optix::float4 result;
     float importance;
 };
 

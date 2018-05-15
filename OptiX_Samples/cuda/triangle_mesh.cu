@@ -42,11 +42,12 @@ rtBuffer<float3> vertex_buffer;
 rtBuffer<float3> normal_buffer;
 rtBuffer<float2> texcoord_buffer;
 rtBuffer<int3>   index_buffer;
-rtBuffer<int>    material_buffer;
+rtBuffer<float3> color_buffer;
 
 rtDeclareVariable(float3, texcoord,         attribute texcoord, ); 
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, ); 
 rtDeclareVariable(float3, shading_normal,   attribute shading_normal, ); 
+rtDeclareVariable(float3, color, attribute color, );
 
 rtDeclareVariable(float3, back_hit_point,   attribute back_hit_point, ); 
 rtDeclareVariable(float3, front_hit_point,  attribute front_hit_point, ); 
@@ -69,7 +70,8 @@ void meshIntersect( int primIdx )
   float  t, beta, gamma;
   if( intersect_triangle( ray, p0, p1, p2, n, t, beta, gamma ) ) {
 
-    if(  rtPotentialIntersection( t ) ) {
+    if(  rtPotentialIntersection( t ) ) 
+    {
 
       geometric_normal = normalize( n );
       if( normal_buffer.size() == 0 ) {
@@ -90,6 +92,18 @@ void meshIntersect( int primIdx )
         texcoord = make_float3( t1*beta + t2*gamma + t0*(1.0f-beta-gamma) );
       }
 
+      if (color_buffer.size() == 0) 
+      {
+          color = make_float3(0.0f, 0.0f, 1.0f);
+      }
+      else 
+      {
+          float3 t0 = color_buffer[v_idx.x];
+          float3 t1 = color_buffer[v_idx.y];
+          float3 t2 = color_buffer[v_idx.z];
+          color = t1*beta + t2 * gamma + t0 * (1.0f - beta - gamma);
+      }
+
       if( DO_REFINE ) {
           refine_and_offset_hitpoint(
                   ray.origin + t*ray.direction,
@@ -100,7 +114,7 @@ void meshIntersect( int primIdx )
                   front_hit_point );
       }
 
-      rtReportIntersection(material_buffer[primIdx]);
+      rtReportIntersection(0);
     }
   }
 }

@@ -56,6 +56,8 @@ void GenerateCameraRays(
     ray.extra.y = 0xffffffff;
     ray.padding.x = gid;
 
+	printf("%f:%f:%f\n", ray.d.x, ray.d.y, ray.d.z);
+
     // Write the ray out to memory
     rays[gid] = ray;
 }
