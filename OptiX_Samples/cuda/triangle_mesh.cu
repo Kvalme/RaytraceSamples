@@ -48,6 +48,7 @@ rtDeclareVariable(float3, texcoord,         attribute texcoord, );
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, ); 
 rtDeclareVariable(float3, shading_normal,   attribute shading_normal, ); 
 rtDeclareVariable(float3, color, attribute color, );
+rtDeclareVariable(float3, pos, attribute pos, );
 
 rtDeclareVariable(float3, back_hit_point,   attribute back_hit_point, ); 
 rtDeclareVariable(float3, front_hit_point,  attribute front_hit_point, ); 
@@ -74,6 +75,12 @@ void meshIntersect( int primIdx )
     {
 
       geometric_normal = normalize( n );
+
+      float3 p0 = vertex_buffer[v_idx.x];
+      float3 p1 = vertex_buffer[v_idx.y];
+      float3 p2 = vertex_buffer[v_idx.z];
+      pos = p1*beta + p2 * gamma + p0 * (1.0f - beta - gamma);
+
       if( normal_buffer.size() == 0 ) {
         shading_normal = geometric_normal; 
       } else {

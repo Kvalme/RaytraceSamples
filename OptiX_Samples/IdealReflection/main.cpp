@@ -66,14 +66,6 @@ int main(int argc, char* argv[])
 {
     try
     {
-        if (argc != 2)
-        {
-            std::cerr << "Usage: " << argv[0] << " <rays_per_frame_per_hit>" << std::endl;
-            return -1;
-        }
-
-        int ao_rays_per_frame = atol(argv[1]);
-
         int w = 1920;
         int h = 1080;
 
@@ -82,9 +74,8 @@ int main(int argc, char* argv[])
         context->setEntryPointCount(1);
         context->setStackSize(4640);
         context["primary_ray_type"]->setUint(0);
-        context["shadow_ray_type"]->setUint(1);
+        context["indirect_ray_type"]->setUint(1);
         context["scene_epsilon"]->setFloat(1.e-4f);
-        context["ao_rays_per_frame"]->setUint(ao_rays_per_frame);
 
         Buffer output_buffer = context->createBuffer(RT_BUFFER_OUTPUT);
         output_buffer->setFormat(RT_FORMAT_FLOAT4);
@@ -94,17 +85,17 @@ int main(int argc, char* argv[])
         Program triangle_mesh_bounds = context->createProgramFromPTXFile("../cuda/triangle_mesh.ptx", "mesh_bounds");
         Program triangle_mesh_intersect = context->createProgramFromPTXFile("../cuda/triangle_mesh.ptx", "mesh_intersect");
 
-        Program ray_gen_program = context->createProgramFromPTXFile("ambient_occlusion.ptx", "GenerateCameraRays");
-        Program closest_hit_primary = context->createProgramFromPTXFile("ambient_occlusion.ptx", "ShadePrimaryRays");
-        Program miss_hit_primary = context->createProgramFromPTXFile("ambient_occlusion.ptx", "MissHitPrimary");
-        Program any_hit_shadow = context->createProgramFromPTXFile("ambient_occlusion.ptx", "AnyHitShadowRay");
-        Program miss_hit_shadow = context->createProgramFromPTXFile("ambient_occlusion.ptx", "MissHitShadowRay");
+        Program ray_gen_program = context->createProgramFromPTXFile("ideal_reflect.ptx", "GenerateCameraRays");
+        Program closest_hit_primary = context->createProgramFromPTXFile("ideal_reflect.ptx", "ShadePrimaryRays");
+        Program miss_hit_primary = context->createProgramFromPTXFile("ideal_reflect.ptx", "MissHitPrimary");
+        Program closest_hit_indirect = context->createProgramFromPTXFile("ideal_reflect.ptx", "ClosestHitIndirectRay");
+        Program miss_hit_indirect = context->createProgramFromPTXFile("ideal_reflect.ptx", "MissHitIndirectRay");
 
-        Program exception_program = context->createProgramFromPTXFile("ambient_occlusion.ptx", "Exception");
+        Program exception_program = context->createProgramFromPTXFile("ideal_reflect.ptx", "Exception");
 
         context->setRayGenerationProgram(0, ray_gen_program);
         context->setMissProgram(0, miss_hit_primary);
-        context->setMissProgram(1, miss_hit_shadow);
+        context->setMissProgram(1, miss_hit_indirect);
         context->setExceptionProgram(0, exception_program);
 
         //Load scene
@@ -188,7 +179,7 @@ int main(int argc, char* argv[])
 
             auto material = context->createMaterial();
             material->setClosestHitProgram(0, closest_hit_primary);
-            material->setAnyHitProgram(1, any_hit_shadow);
+            material->setClosestHitProgram(1, closest_hit_indirect);
             instance->setMaterialCount(1);
             instance->setMaterial(0, material);
 
@@ -261,8 +252,8 @@ int main(int argc, char* argv[])
 
         end = std::chrono::high_resolution_clock::now();
         double elapsed_s = (double)(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.;
-        std::cout << frame_count << " frames, " << w * h << " primary rays, " << w * h*ao_rays_per_frame << " shadow rays - " << elapsed_s << " s" << std::endl;
-        std::cout << "fps: " << (frame_count / elapsed_s) << ", " << ((((w * h) + (w * h * ao_rays_per_frame)) * frame_count) / (elapsed_s)) / 1e6 << " MRays/s" << std::endl;
+        std::cout << frame_count << " frames, " << w * h << " primary rays, " << w * h << " indirect rays - " << elapsed_s << " s" << std::endl;
+        std::cout << "fps: " << (frame_count / elapsed_s) << ", " << ((((w * h) + (w * h)) * frame_count) / (elapsed_s)) / 1e6 << " MRays/s" << std::endl;
 
 
         //Read and save output buffer
@@ -279,7 +270,7 @@ int main(int argc, char* argv[])
                 pix[a+2] /= pix[a + 3];
             }
 
-            SaveImage("ambient_occlusion.jpg", pix.data(), w, h);
+            SaveImage("ideal_reflect.jpg", pix.data(), w, h);
 
             output_buffer->unmap();
         }

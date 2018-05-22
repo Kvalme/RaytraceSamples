@@ -104,11 +104,6 @@ void ShadePrimaryRays(
         // Write color to output buffer
         color_buffer[pixel_id] = (float4)(color, 1.0f);
 
-        Sampler sampler;
-        Sampler_Init(&sampler, gid + frame_no);
-
-        float2 sample = Sampler_Sample2D(&sampler);
-
         float pdf;
         float3 bxdf;
         float3 wo;
