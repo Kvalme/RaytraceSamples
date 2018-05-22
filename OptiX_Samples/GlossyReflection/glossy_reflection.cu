@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <optixu/optixu_matrix.h>
 #include <utils.h>
 #include <sampler.h>
+#include "microfacetggx.h"
 
 using namespace optix;
 
@@ -54,33 +55,7 @@ rtDeclareVariable(float3, front_hit_point,  attribute front_hit_point, );
 rtBuffer<float4, 2>   output_buffer;
 
 #define DENOM_EPS 1e-8f
-
-__device__
-float3 IdealReflect_Sample(
-    // Preprocessed shader input data
-    float3 color,
-    // Incoming direction
-    float3 wi,
-    // Normal
-    float3 normal,
-    // Outgoing  direction
-    float3* wo,
-    // PDF at wo
-    float* pdf)
-{
-    // Mirror reflect wi
-    *wo = normalize(make_float3(-wi.x, wi.y, -wi.z));
-
-    // PDF is infinite at that point, but deltas are going to cancel out while evaluating
-    // so set it to 1.f
-    *pdf = 1.f;
-
-    float coswo = fabs(dot(*wo, normal));
-
-    // Return reflectance value
-    return coswo > DENOM_EPS ? (color * (1.f / coswo)) : make_float3(0.f, 0.f, 0.f);
-}
-
+#define ROUGHNESS 0.01f
 
 RT_PROGRAM void GenerateCameraRays()
 {
@@ -123,7 +98,12 @@ RT_PROGRAM void ShadePrimaryRays()
     float3 wo;
     float3 wi = -normalize(ray.direction);
 
-    bxdf = IdealReflect_Sample(color, wi, shading_normal, &wo, &pdf);
+    Sampler sampler;
+    Sampler_Init(&sampler, launch_index.x + launch_index.y * 1920 + frame_no);;
+
+    float2 sample = Sampler_Sample2D(&sampler);
+
+    bxdf = MicrofacetGGX_Sample(ROUGHNESS, color, wi, sample, shading_normal, &wo, &pdf);
 
     optix::Ray indirect_ray(pos + shading_normal * 0.001f, normalize(wo), indirect_ray_type, scene_epsilon);
 
@@ -142,7 +122,13 @@ RT_PROGRAM void ClosestHitIndirectRay()
     float3 wo;
     float3 wi = -normalize(ray.direction);
 
-    bxdf = IdealReflect_Sample(color, wi, shading_normal, &wo, &pdf);
+    Sampler sampler;
+    Sampler_Init(&sampler, launch_index.x + launch_index.y * 1920 + frame_no);;
+
+    float2 sample = Sampler_Sample2D(&sampler);
+
+
+    bxdf = MicrofacetGGX_Sample(ROUGHNESS, color, wi, sample, shading_normal, &wo, &pdf);
     prd_radiance.result = make_float4(bxdf / pdf, 2.0f);
 }
 
