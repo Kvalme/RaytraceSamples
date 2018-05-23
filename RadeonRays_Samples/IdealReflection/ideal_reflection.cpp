@@ -13,6 +13,8 @@
 
 #include "OpenImageIO/imageio.h"
 
+#include <chrono>
+
 using namespace RadeonRays;
 using namespace tinyobj;
 
@@ -79,7 +81,7 @@ int main(int argc, char* argv[])
         return -1;
     }*/
 
-    CLWContext context = InitCLW(0, 0);
+    CLWContext context = InitCLW(1, 0);
     IntersectionApi* intersection_api = InitIntersectorApi(context);
 
     Scene scene;
@@ -141,7 +143,11 @@ int main(int argc, char* argv[])
 
 
 
-    int frame_count = 1;
+    int frame_count = 100;
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
+    start = std::chrono::high_resolution_clock::now();
+
     for (int a = 0; a < frame_count; ++a)
     {
         context.FillBuffer<uint32_t>(0, shadow_rays_counter, 0, 1);
@@ -214,6 +220,11 @@ int main(int argc, char* argv[])
             context.Launch1D(0, ((globalsize + 63) / 64) * 64, 64, kernel);
         }
     }
+
+    end = std::chrono::high_resolution_clock::now();
+    double elapsed_s = (double)(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.;
+    std::cout << frame_count << " frames, " << initial_rays_count << " primary rays, " << shadow_rays_per_frame << " indirect rays - " << elapsed_s << " s" << std::endl;
+    std::cout << "fps: " << (frame_count / elapsed_s) << ", " << ((((w * h) + (w * h)) * frame_count) / (elapsed_s)) / 1e6 << " MRays/s" << std::endl;
 
     //Resolve image
     {

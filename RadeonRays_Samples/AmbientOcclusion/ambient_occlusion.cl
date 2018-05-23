@@ -132,7 +132,7 @@ void ShadePrimaryRays(
 KERNEL
 void ProcessAO(
     GLOBAL Ray* restrict input_rays,
-    GLOBAL Intersection const* restrict isects,
+    GLOBAL int const* restrict hit_results,
     int intersection_count,
     GLOBAL float4* restrict color_buffer,
     GLOBAL float4* restrict output
@@ -142,11 +142,11 @@ void ProcessAO(
     const int gid = get_global_id(0);
     const int pixel_id = input_rays[gid].padding.x;
 
-    const Intersection hit = isects[gid];
+    const int hit = hit_results[gid];
     if (gid < intersection_count)
     {
         // Miss
-        if (hit.shapeid == INVALID_IDX)
+        if (hit == -1)
         {
             output[pixel_id] += color_buffer[pixel_id];
             return;
