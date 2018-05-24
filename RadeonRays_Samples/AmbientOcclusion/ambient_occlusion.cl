@@ -118,7 +118,7 @@ void ShadePrimaryRays(
                 float3 dir = Sample_MapToHemisphere(sample, normal, 0.f);
 
                 Ray ray;
-                ray.o = (float4)(pos + normal * 0.001f, 100000.f);
+                ray.o = (float4)(pos + normal * 0.001f, 100.f);
                 ray.d = (float4)(dir, 0.f);
                 ray.extra.x = 0xffffffff;
                 ray.extra.y = 0xffffffff;

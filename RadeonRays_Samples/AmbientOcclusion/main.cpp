@@ -181,7 +181,7 @@ int main(int argc, char* argv[])
         end = std::chrono::high_resolution_clock::now();
         double elapsed_s = (double)(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) / 1000.;
         std::cout << frame_count << " frames, " << initial_rays_count << " primary rays, " << ao_rays_per_frame << " indirect rays - " << elapsed_s << " s" << std::endl;
-        std::cout << "fps: " << (frame_count / elapsed_s) << ", " << ((((w * h) + (w * h)) * frame_count) / (elapsed_s)) / 1e6 << " MRays/s" << std::endl;
+        std::cout << "fps: " << (frame_count / elapsed_s) << ", " << (((initial_rays_count + ao_rays_per_frame) * frame_count) / (elapsed_s)) / 1e6 << " MRays/s" << std::endl;
 
 
         //Resolve image

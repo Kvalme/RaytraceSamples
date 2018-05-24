@@ -98,7 +98,7 @@ RT_PROGRAM void ShadePrimaryRays()
         float2 sample = Sampler_Sample2D(&sampler);
         float3 dir = Sample_MapToHemisphere(sample, shading_normal, 0.f);
 
-        optix::Ray ray(pos + shading_normal * 0.001f, dir, shadow_ray_type, scene_epsilon);
+        optix::Ray ray(pos + shading_normal * 0.001f, dir, shadow_ray_type, scene_epsilon, 100.f);
         rtTrace(top_object, ray, prd_radiance);
         c += color * prd_radiance.importance;
     }

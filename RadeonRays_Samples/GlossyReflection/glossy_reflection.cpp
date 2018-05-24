@@ -71,7 +71,7 @@ std::vector<Light> PrepareLights(int count)
     }
 
     return lights;
-}
+}   
 
 int main(int argc, char* argv[])
 {
